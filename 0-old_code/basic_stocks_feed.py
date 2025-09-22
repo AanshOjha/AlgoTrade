@@ -46,7 +46,7 @@ def main():
 
     # 1. Fetch historical data
     print("\n--- 1. Testing Historical Data ---")
-    historical_data = handler.fetch_historical_data('MSFT', '2017-01-01', '2024-12-31', '1d')
+    historical_data = handler.fetch_historical_data('AAPL', '2017-01-01', '2024-12-31', '1d')
     if historical_data is not None:
         print("Historical Data Head:")
         print(historical_data)    # print(historical_data.head()) == prints first 5 rows
