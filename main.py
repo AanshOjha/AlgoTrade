@@ -4,21 +4,22 @@ import uvicorn
 from data_feed.data_feed import fetch_stock_data
 from strategy.ma_crossover import ma_crossover_strategy
 from visualisation.chart import create_trading_chart
+from config import settings
 
 # Create FastAPI instance
 app = FastAPI(
-    title="Trading App API",
+    title="Basic Algo Trading App",
     description="A basic trading application API",
-    version="1.0.0"
+    version="3.0.0"
 )
 
 # Pydantic model for stock data request
 class StockDataRequest(BaseModel):
-    stock_symbol: str
-    start_date: str
-    end_date: str
-    interval: str = "1d"
-    save_to_file: bool = False
+    stock_symbol: str = settings.STOCK_SYMBOL
+    start_date: str = settings.START_DATE
+    end_date: str = settings.END_DATE
+    interval: str = settings
+    save_to_file: bool = True
 
 # Basic routes
 @app.get("/")

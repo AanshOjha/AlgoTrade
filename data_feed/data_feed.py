@@ -1,12 +1,12 @@
 import yfinance as yf
-import pandas as pd
 import os
+from config import settings
 
 # Configuration variables
-stock_symbol = "AAPL"
-start_date = "2017-01-01"
-end_date = "2024-12-31"
-interval = "1d"  # 1d, 1wk, 1mo, etc.
+stock_symbol = settings.STOCK_SYMBOL
+start_date = settings.START_DATE
+end_date = settings.END_DATE
+interval = settings.INTERVAL
 
 def fetch_stock_data(symbol=stock_symbol, start=start_date, end=end_date, data_interval=interval, save_to_file=False):
     """

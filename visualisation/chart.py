@@ -1,5 +1,4 @@
 import matplotlib.pyplot as plt
-import pandas as pd
 from strategy.ma_crossover import ma_crossover_strategy
 
 def create_trading_chart():
@@ -14,8 +13,22 @@ def create_trading_chart():
     plt.plot(data['Close'], label='Close Price')
     plt.plot(data['EMA50'], label='50-day EMA')
     plt.plot(data['EMA200'], label='200-day EMA')
-    plt.plot(data[data['Position'] == 1].index, data['Close'][data['Position'] == 1], '^', markersize=10, color='g', label='Buy signal')
-    plt.plot(data[data['Position'] == -1].index, data['Close'][data['Position'] == -1], 'v', markersize=10, color='r', label='Sell signal')
+    plt.plot(
+        data[data['Position'] == 1].index, 
+        data['Close'][data['Position'] == 1], 
+        '^', 
+        markersize=10, 
+        color='g', 
+        label='Buy signal'
+    )
+    plt.plot(
+        data[data['Position'] == -1].index, 
+        data['Close'][data['Position'] == -1],
+        'v', 
+        markersize=10, 
+        color='r', 
+        label='Sell signal'
+    )
     plt.title('AAPL EMA Crossover Strategy')
     plt.xlabel('Date')
     plt.ylabel('Price')

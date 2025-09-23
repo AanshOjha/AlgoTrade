@@ -1,5 +1,5 @@
-import pandas as pd
 from data_feed.data_feed import fetch_stock_data
+from config import settings
 
 def ma_crossover_strategy():
     """
@@ -8,7 +8,13 @@ def ma_crossover_strategy():
     Sell when 50-day EMA crosses below 200-day EMA
     """
     # Fetch historical stock data
-    result = fetch_stock_data(symbol="AAPL", start="2017-01-01", end="2024-12-31", data_interval="1d", save_to_file=True)
+    result = fetch_stock_data(
+        symbol=settings.STOCK_SYMBOL, 
+        start=settings.START_DATE, 
+        end=settings.END_DATE, 
+        data_interval=settings.INTERVAL, 
+        save_to_file=True
+    )
     data = result[0]  # DataFrame
     
     # Calculate EMAs for all entries
