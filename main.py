@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
 import uvicorn
 from data_feed.data_feed import fetch_stock_data
@@ -6,7 +6,10 @@ from strategy.ma_crossover import ma_crossover_strategy
 from visualisation.chart import create_trading_chart
 from config import settings
 from backtest.backtesting_engine import backtest_strategy
+from database.db_engine import db_engine
 from typing import List, Dict, Any, Tuple
+import uuid
+import json
 
 # Create FastAPI instance
 app = FastAPI(
@@ -22,6 +25,18 @@ class StockDataRequest(BaseModel):
     end_date: str = settings.END_DATE
     interval: str = settings
     save_to_file: bool = True
+
+class BacktestRequest(BaseModel):
+    stock_symbol: str = settings.STOCK_SYMBOL
+    start_date: str = settings.START_DATE
+    end_date: str = settings.END_DATE   
+    initial_capital: float = settings.INITIAL_CAPITAL
+    strategy_name: str = settings.STRATEGY_NAME
+    strategy_params: Dict[str, Any] = {
+        "short_window": 20,
+        "long_window": 50
+    }
+
 
 # Basic routes
 @app.get("/")
@@ -112,18 +127,108 @@ async def show_chart():
             "message": str(e)
         }
     
-@app.get("/backtest")
-def backtest():
-    result = backtest_strategy(
-        data=ma_crossover_strategy(),
-        strategy_name=settings.STRATEGY_NAME,
-        stock_symbol=settings.STOCK_SYMBOL, 
-        initial_capital=10000.0
-    )
-    return {
-        "status": "success", 
-        "performance_metrics": result[1]
+def run_backtest_task(backtest_id: str, request_data: dict):
+    """
+    Background task function to run backtest
+    """
+    try:
+        # Update status to RUNNING
+        db_engine.update_backtest_status(backtest_id, "RUNNING")
+        
+        # Run the backtest
+        result = backtest_strategy(
+            data=ma_crossover_strategy(
+                short_window=request_data["strategy_params"].get("short_window", 20),
+                long_window=request_data["strategy_params"].get("long_window", 50),
+                stock_symbol=request_data["stock_symbol"],
+                start_date=request_data["start_date"],
+                end_date=request_data["end_date"]
+            ),
+            # stock_symbol=request_data["stock_symbol"],
+            # start_date=request_data["start_date"],
+            # end_date=request_data["end_date"],
+            # initial_capital=request_data["initial_capital"],
+            # strategy_name=request_data["strategy_name"],
+            # shares_to_buy=settings.SHARES_TO_BUY
+        )
+        
+        # Store results as JSON string
+        results_json = json.dumps({
+            "performance_metrics": result[1] if len(result) > 1 else None,
+            "portfolio_values": result[0] if len(result) > 0 else None
+        })
+        
+        # Update status to COMPLETED with results
+        db_engine.update_backtest_status(backtest_id, "COMPLETED", results_json)
+        
+    except Exception as e:
+        # Update status to FAILED with error message
+        print(f"Error in backtest task: {str(e)}")
+        db_engine.update_backtest_status(backtest_id, "FAILED", error_message=str(e))
+
+@app.post("/backtest")
+async def backtest(background_tasks: BackgroundTasks, request: BacktestRequest):
+    """
+    Start a new backtest job in the background
+    """
+    # Generate new backtest ID
+    backtest_id = str(uuid.uuid4())
+    
+    # Convert request to dictionary for JSON storage
+    request_data = {
+        "stock_symbol": request.stock_symbol,
+        "start_date": request.start_date,
+        "end_date": request.end_date,
+        "initial_capital": request.initial_capital,
+        "strategy_name": request.strategy_name,
+        "strategy_params": request.strategy_params
     }
+    
+    # Store request parameters as JSON string
+    request_params_json = json.dumps(request_data)
+    
+    # Create backtest job in database with PENDING status
+    db_engine.create_backtest_job(backtest_id, request_params_json)
+    
+    # Add background task
+    background_tasks.add_task(run_backtest_task, backtest_id, request_data)
+    
+    return {
+        "status": "success",
+        "message": "Backtest started successfully.",
+        "backtest_id": backtest_id
+    }
+
+@app.get("/backtest/{backtest_id}")
+async def get_backtest_status(backtest_id: str):
+    """
+    Get the status and results of a backtest job
+    """
+    try:
+        job = db_engine.get_backtest_job(backtest_id)
+        if not job:
+            return {
+                "status": "error",
+                "message": f"No backtest found with ID {backtest_id}"
+            }
+        
+        response = {
+            "backtest_id": job["backtest_id"],  # Changed from job[0]
+            "job_status": job["status"],        # Changed from job[1]
+            "request_params": json.loads(job["request_params"]) if job["request_params"] else None,  # Changed
+            "results": json.loads(job["results"]) if job["results"] else None,  # Changed
+            "error_message": job["error_message"],  # Changed
+            "created_at": job["created_at"],        # Changed
+            "updated_at": job["updated_at"]         # Changed
+        }
+        
+        return response
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
 
 # Run the application
 if __name__ == "__main__":

@@ -111,6 +111,8 @@ def backtest_strategy(data: pd.DataFrame,
     win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
     
     performance_metrics = {
+        'timeframe_start': str(data.index[0])[:10],
+        'timeframe_end': str(data.index[-1])[:10],
         'initial_capital': initial_capital,
         'final_portfolio_value': final_portfolio_value,
         'total_return_pct': round(total_return, 2),

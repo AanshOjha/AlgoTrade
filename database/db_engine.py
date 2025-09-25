@@ -1,6 +1,7 @@
 import sqlite3
 from typing import Optional, List, Dict, Any
 import logging
+import json
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -61,6 +62,25 @@ class DatabaseEngine:
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_trades_timestamp 
                 ON trades(entry_timestamp)
+            ''')
+            
+            # Create backtest_jobs table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS backtest_jobs (
+                    backtest_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED')),
+                    request_params TEXT NOT NULL,
+                    results TEXT,
+                    error_message TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create index for backtest jobs
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_backtest_status 
+                ON backtest_jobs(status)
             ''')
             
             conn.commit()
@@ -187,5 +207,108 @@ class DatabaseEngine:
         finally:
             conn.close()
     
+    def create_backtest_job(self, backtest_id: str, request_params: str) -> bool:
+        """
+        Create a new backtest job with PENDING status
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO backtest_jobs (backtest_id, status, request_params)
+                VALUES (?, 'PENDING', ?)
+            ''', (backtest_id, request_params))
+            
+            conn.commit()
+            logger.info(f"Backtest job {backtest_id} created successfully")
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error creating backtest job: {e}")
+            raise
+        finally:
+            conn.close()
+    
+    def update_backtest_status(self, backtest_id: str, status: str, 
+                              results: Optional[str] = None, 
+                              error_message: Optional[str] = None) -> bool:
+        """
+        Update backtest job status and optionally results or error message
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                UPDATE backtest_jobs 
+                SET status = ?, results = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE backtest_id = ?
+            ''', (status, results, error_message, backtest_id))
+            
+            if cursor.rowcount > 0:
+                conn.commit()
+                logger.info(f"Backtest job {backtest_id} status updated to {status}")
+                return True
+            else:
+                logger.warning(f"No backtest job found with ID: {backtest_id}")
+                return False
+                
+        except sqlite3.Error as e:
+            logger.error(f"Error updating backtest job: {e}")
+            raise
+        finally:
+            conn.close()
+    
+    def get_backtest_job(self, backtest_id: str) -> Optional[Dict[Any, Any]]:
+        """
+        Get a specific backtest job by ID
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT * FROM backtest_jobs WHERE backtest_id = ?
+            ''', (backtest_id,))
+            
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error retrieving backtest job: {e}")
+            raise
+        finally:
+            conn.close()
+    
+    def get_all_backtest_jobs(self, status: Optional[str] = None) -> List[Dict[Any, Any]]:
+        """
+        Get all backtest jobs, optionally filtered by status
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            if status:
+                cursor.execute('''
+                    SELECT * FROM backtest_jobs WHERE status = ?
+                    ORDER BY created_at DESC
+                ''', (status,))
+            else:
+                cursor.execute('''
+                    SELECT * FROM backtest_jobs ORDER BY created_at DESC
+                ''')
+            
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error retrieving backtest jobs: {e}")
+            raise
+        finally:
+            conn.close()
+
 # Create a global database instance
 db_engine = DatabaseEngine()

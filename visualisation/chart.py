@@ -11,8 +11,8 @@ def create_trading_chart():
     # Create the plot
     plt.figure(figsize=(12, 8))
     plt.plot(data['Close'], label='Close Price')
+    plt.plot(data['EMA20'], label='20-day EMA')
     plt.plot(data['EMA50'], label='50-day EMA')
-    plt.plot(data['EMA200'], label='200-day EMA')
     plt.plot(
         data[data['Position'] == 1].index, 
         data['Close'][data['Position'] == 1], 
@@ -29,7 +29,7 @@ def create_trading_chart():
         color='r', 
         label='Sell signal'
     )
-    plt.title('AAPL EMA Crossover Strategy')
+    plt.title('ONGC.NS EMA Crossover Strategy')
     plt.xlabel('Date')
     plt.ylabel('Price')
     plt.legend()
