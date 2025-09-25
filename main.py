@@ -182,25 +182,33 @@ def run_backtest_task(backtest_id: str, request_data: dict):
         # Update status to RUNNING
         db_engine.update_backtest_status(backtest_id, "RUNNING")
         
+        # Generate strategy data first
+        strategy_data = ma_crossover_strategy(
+            short_window=request_data["strategy_params"].get("short_window", 20),
+            long_window=request_data["strategy_params"].get("long_window", 50),
+            stock_symbol=request_data["stock_symbol"],
+            start_date=request_data["start_date"],
+            end_date=request_data["end_date"]
+        )
+        
         # Run the backtest
         result = backtest_strategy(
-            data=ma_crossover_strategy(
-                short_window=request_data["strategy_params"].get("short_window", 20),
-                long_window=request_data["strategy_params"].get("long_window", 50),
-                stock_symbol=request_data["stock_symbol"],
-                start_date=request_data["start_date"],
-                end_date=request_data["end_date"]
-            ),
+            data=strategy_data,
             stock_symbol=request_data["stock_symbol"],
             initial_capital=request_data["initial_capital"],
             strategy_name=request_data["strategy_name"],
             shares_to_buy=settings.SHARES_TO_BUY
         )
         
-        # Store results as JSON string
+        # Store comprehensive results as JSON string
         results_json = json.dumps({
             "performance_metrics": result[1] if len(result) > 1 else None,
-            "portfolio_values": result[0] if len(result) > 0 else None
+            "portfolio_values": result[0] if len(result) > 0 else None,
+            "strategy_data_shape": strategy_data.shape if strategy_data is not None else None,
+            "timeframe": {
+                "start": str(strategy_data.index[0])[:10] if strategy_data is not None and len(strategy_data) > 0 else None,
+                "end": str(strategy_data.index[-1])[:10] if strategy_data is not None and len(strategy_data) > 0 else None
+            }
         })
         
         # Update status to COMPLETED with results
@@ -244,10 +252,13 @@ async def backtest(background_tasks: BackgroundTasks, request: BacktestRequest):
         "backtest_id": backtest_id
     }
 
-@app.get("/backtest/{backtest_id}")
+@app.get("/backtest/{backtest_id}/status")
 async def get_backtest_status(backtest_id: str):
     """
-    Get the status and results of a backtest job
+    Get the current status of a backtest job (without full results)
+    
+    Use this endpoint to check if a backtest is still running.
+    For completed backtests, use GET /backtest/{backtest_id} to get full results.
     """
     try:
         job = db_engine.get_backtest_job(backtest_id)
@@ -258,13 +269,11 @@ async def get_backtest_status(backtest_id: str):
             }
         
         response = {
-            "backtest_id": job["backtest_id"],  # Changed from job[0]
-            "job_status": job["status"],        # Changed from job[1]
-            "request_params": json.loads(job["request_params"]) if job["request_params"] else None,  # Changed
-            "results": json.loads(job["results"]) if job["results"] else None,  # Changed
-            "error_message": job["error_message"],  # Changed
-            "created_at": job["created_at"],        # Changed
-            "updated_at": job["updated_at"]         # Changed
+            "backtest_id": job["backtest_id"],
+            "job_status": job["status"],
+            "error_message": job["error_message"],
+            "created_at": job["created_at"], 
+            "updated_at": job["updated_at"]
         }
         
         return response
@@ -273,6 +282,107 @@ async def get_backtest_status(backtest_id: str):
         return {
             "status": "error",
             "message": str(e)
+        }
+
+@app.get("/backtest/{backtest_id}")
+async def get_backtest_results(backtest_id: str):
+    """
+    Get the full results of a completed backtest
+    
+    Retrieves comprehensive backtest data including:
+    - Performance metrics (final portfolio value, P&L, win rate, etc.)
+    - Equity curve data for plotting portfolio growth over time
+    - Complete chart data with OHLCV, indicators, and trading signals
+    """
+    try:
+        job = db_engine.get_backtest_job(backtest_id)
+        if not job:
+            return {
+                "status": "error",
+                "message": f"No backtest found with ID {backtest_id}"
+            }
+        
+        # If backtest is not completed, return status info
+        if job["status"] != "COMPLETED":
+            return {
+                "backtest_id": job["backtest_id"],
+                "job_status": job["status"],
+                "error_message": job["error_message"],
+                "created_at": job["created_at"],
+                "updated_at": job["updated_at"]
+            }
+        
+        # Parse the stored results
+        stored_results = json.loads(job["results"]) if job["results"] else {}
+        request_params = json.loads(job["request_params"]) if job["request_params"] else {}
+        
+        # Get performance metrics from stored results
+        performance_metrics = stored_results.get("performance_metrics", {})
+        portfolio_values = stored_results.get("portfolio_values", [])
+        
+        # Regenerate strategy data to get chart data with indicators
+        strategy_data = ma_crossover_strategy(
+            short_window=request_params.get("strategy_params", {}).get("short_window", 20),
+            long_window=request_params.get("strategy_params", {}).get("long_window", 50),
+            stock_symbol=request_params.get("stock_symbol", "AAPL"),
+            start_date=request_params.get("start_date", "2020-01-01"),
+            end_date=request_params.get("end_date", "2024-12-31")
+        )
+        
+        # Create equity curve data
+        equity_curve = []
+        if portfolio_values and len(portfolio_values) > 0:
+            # Get date range from strategy data
+            dates = strategy_data.index.tolist()
+            for i, value in enumerate(portfolio_values):
+                if i < len(dates):
+                    equity_curve.append({
+                        "date": dates[i].strftime("%Y-%m-%d"),
+                        "value": round(value, 2)
+                    })
+        
+        # Create chart data with OHLCV, indicators, and signals
+        chart_data = []
+        short_window = request_params.get("strategy_params", {}).get("short_window", 20)
+        long_window = request_params.get("strategy_params", {}).get("long_window", 50)
+        
+        for index, row in strategy_data.iterrows():
+            chart_point = {
+                "Date": index.strftime("%Y-%m-%dT%H:%M:%S%z") if hasattr(index, 'strftime') else str(index),
+                "Open": round(float(row['Open']), 2),
+                "High": round(float(row['High']), 2),
+                "Low": round(float(row['Low']), 2), 
+                "Close": round(float(row['Close']), 2),
+                "Volume": int(row['Volume']),
+                f"EMA{short_window}": round(float(row[f'EMA{short_window}']), 2) if f'EMA{short_window}' in row else None,
+                f"EMA{long_window}": round(float(row[f'EMA{long_window}']), 2) if f'EMA{long_window}' in row else None,
+                "Position": float(row.get('Position', 0))  # Signal for frontend markers
+            }
+            chart_data.append(chart_point)
+        
+        # Build the comprehensive response
+        response = {
+            "backtest_id": backtest_id,
+            "performance_report": {
+                "final_portfolio_value": performance_metrics.get("final_portfolio_value", 0),
+                "total_profit_loss_pct": performance_metrics.get("total_return_pct", 0),
+                "total_trades": performance_metrics.get("total_trades", 0),
+                "win_rate_pct": performance_metrics.get("win_rate_pct", 0),
+                "initial_capital": performance_metrics.get("initial_capital", 0),
+                "total_pnl": performance_metrics.get("total_pnl", 0),
+                "strategy_name": performance_metrics.get("strategy_name", ""),
+                "stock_symbol": performance_metrics.get("stock_symbol", "")
+            },
+            "equity_curve": equity_curve,
+            "chart_data": chart_data
+        }
+        
+        return response
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to retrieve backtest results: {str(e)}"
         }
 
 # Run the application
