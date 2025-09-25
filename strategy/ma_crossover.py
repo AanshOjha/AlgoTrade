@@ -19,7 +19,7 @@ def ma_crossover_strategy(
         start=start_date, 
         end=end_date, 
         data_interval=settings.INTERVAL, 
-        save_to_file=False
+        save_to_file=True
     )
     data = result[0]  # DataFrame
     

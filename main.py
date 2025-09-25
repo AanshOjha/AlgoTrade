@@ -1,4 +1,4 @@
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, Query
 from pydantic import BaseModel
 import uvicorn
 from data_feed.data_feed import fetch_stock_data
@@ -7,7 +7,7 @@ from visualisation.chart import create_trading_chart
 from config import settings
 from backtest.backtesting_engine import backtest_strategy
 from database.db_engine import db_engine
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 import uuid
 import json
 
@@ -126,6 +126,53 @@ async def show_chart():
             "status": "error",
             "message": str(e)
         }
+
+@app.get("/trades")
+async def get_all_trades(
+    strategy_name: Optional[str] = Query(None, description="Filter trades by strategy name"),
+    ticker: Optional[str] = Query(None, description="Filter trades by stock ticker/symbol"),
+    limit: Optional[int] = Query(None, description="Limit the number of trades returned")
+):
+    """
+    Get all trades from the database.
+    
+    This endpoint retrieves the history of all completed trades from the database.
+    Can be filtered by strategy_name or ticker using query parameters.
+    
+    Example Usage: /trades?strategy_name=ma_crossover&ticker=AAPL
+    """
+    try:
+        # Get trades from database using the existing method
+        trades = db_engine.get_trades(
+            stock_symbol=ticker,
+            strategy_name=strategy_name,
+            limit=limit
+        )
+        
+        # Transform the data to match the expected response format
+        formatted_trades = []
+        for trade in trades:
+            formatted_trade = {
+                "trade_id": trade["trade_id"],
+                "strategy_name": trade["strategy_name"],
+                "ticker": trade["stock_symbol"],
+                "quantity": trade["quantity"],
+                "entry_datetime": trade["entry_timestamp"],
+                "entry_price": trade["entry_price"],
+                "exit_datetime": trade["exit_timestamp"],
+                "exit_price": trade["exit_price"],
+                "pnl": trade["pnl"],
+                "trade_duration_days": trade["days_held"]
+            }
+            formatted_trades.append(formatted_trade)
+        
+        return formatted_trades
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to retrieve trades: {str(e)}"
+        }
     
 def run_backtest_task(backtest_id: str, request_data: dict):
     """
@@ -144,12 +191,10 @@ def run_backtest_task(backtest_id: str, request_data: dict):
                 start_date=request_data["start_date"],
                 end_date=request_data["end_date"]
             ),
-            # stock_symbol=request_data["stock_symbol"],
-            # start_date=request_data["start_date"],
-            # end_date=request_data["end_date"],
-            # initial_capital=request_data["initial_capital"],
-            # strategy_name=request_data["strategy_name"],
-            # shares_to_buy=settings.SHARES_TO_BUY
+            stock_symbol=request_data["stock_symbol"],
+            initial_capital=request_data["initial_capital"],
+            strategy_name=request_data["strategy_name"],
+            shares_to_buy=settings.SHARES_TO_BUY
         )
         
         # Store results as JSON string
