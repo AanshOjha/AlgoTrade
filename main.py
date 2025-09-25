@@ -5,6 +5,8 @@ from data_feed.data_feed import fetch_stock_data
 from strategy.ma_crossover import ma_crossover_strategy
 from visualisation.chart import create_trading_chart
 from config import settings
+from backtest.backtesting_engine import backtest_strategy
+from typing import List, Dict, Any, Tuple
 
 # Create FastAPI instance
 app = FastAPI(
@@ -109,6 +111,19 @@ async def show_chart():
             "status": "error",
             "message": str(e)
         }
+    
+@app.get("/backtest")
+def backtest():
+    result = backtest_strategy(
+        data=ma_crossover_strategy(),
+        strategy_name=settings.STRATEGY_NAME,
+        stock_symbol=settings.STOCK_SYMBOL, 
+        initial_capital=10000.0
+    )
+    return {
+        "status": "success", 
+        "performance_metrics": result[1]
+    }
 
 # Run the application
 if __name__ == "__main__":
