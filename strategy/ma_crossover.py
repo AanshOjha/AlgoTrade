@@ -15,17 +15,16 @@ def ma_crossover_strategy(
     """
     # Fetch historical stock data
     result = fetch_stock_data(
-        symbol=stock_symbol, 
-        start=start_date, 
-        end=end_date, 
-        data_interval=settings.INTERVAL, 
+        symbol=stock_symbol,
+        start=start_date,
+        end=end_date,
+        data_interval=settings.INTERVAL,
         save_to_file=True
     )
     data = result[0]  # DataFrame
     
     # Calculate EMAs for all entries
     data[f'EMA{short_window}'] = data['Close'].ewm(span=short_window, adjust=False).mean()
-    #data['EMA50'] = data['Close'].ewm(span=50, adjust=False).mean()
     data[f'EMA{long_window}'] = data['Close'].ewm(span=long_window, adjust=False).mean()
 
     # Generate trading signals based on moving average crossover
@@ -42,8 +41,6 @@ def ma_crossover_strategy(
     # Remove NaN values to make JSON compliant
     data = data.dropna()
     
-    print(f"Data shape: {data.shape}")
-    print("Sample data:")
-    print(data[['Close', f'EMA{short_window}', f'EMA{long_window}', 'Signal', 'Position']].head())
+    print(f"MA Crossover Strategy: {data.shape} rows, EMA{short_window}/EMA{long_window}")
     
     return data

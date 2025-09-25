@@ -2,6 +2,7 @@ from fastapi import FastAPI, BackgroundTasks, Query
 from pydantic import BaseModel
 import uvicorn
 from strategy.ma_crossover import ma_crossover_strategy
+from strategy.bollinger_bands import bollinger_bands_strategy
 from config import settings
 from backtest.backtesting_engine import backtest_strategy
 from database.db_engine import db_engine
@@ -16,6 +17,45 @@ app = FastAPI(
     version="3.0.0"
 )
 
+def get_strategy_data(
+        strategy_name: str, 
+        strategy_params: Dict[str, Any], 
+        stock_symbol: str, 
+        start_date: str, end_date: str
+    ):
+    """Strategy selector function"""
+    
+    if strategy_name.lower() == "ma_crossover":
+        # MA Crossover Strategy
+        return ma_crossover_strategy(
+            short_window=strategy_params.get("short_window", 20),
+            long_window=strategy_params.get("long_window", 50),
+            stock_symbol=stock_symbol,
+            start_date=start_date,
+            end_date=end_date
+        )
+    
+    elif strategy_name.lower() == "bollinger_bands":
+        # Bollinger Bands Strategy  
+        return bollinger_bands_strategy(
+            window=strategy_params.get("window", 20),
+            std_dev=strategy_params.get("std_dev", 2.0),
+            stock_symbol=stock_symbol,
+            start_date=start_date,
+            end_date=end_date
+        )
+    
+    else:
+        # Default to MA Crossover if strategy not recognized
+        print(f"Warning: Strategy '{strategy_name}' not recognized. Using MA Crossover as default.")
+        return ma_crossover_strategy(
+            short_window=strategy_params.get("short_window", 20),
+            long_window=strategy_params.get("long_window", 50),
+            stock_symbol=stock_symbol,
+            start_date=start_date,
+            end_date=end_date
+        )
+
 # Pydantic model for backtest request
 class BacktestRequest(BaseModel):
     stock_symbol: str = settings.STOCK_SYMBOL
@@ -25,7 +65,9 @@ class BacktestRequest(BaseModel):
     strategy_name: str = settings.STRATEGY_NAME
     strategy_params: Dict[str, Any] = {
         "short_window": 20,
-        "long_window": 50
+        "long_window": 50,
+        "window": 20,
+        "std_dev": 2.0
     }
 
 @app.get("/trades")
@@ -34,14 +76,7 @@ async def get_all_trades(
     ticker: Optional[str] = Query(None, description="Filter trades by stock ticker/symbol"),
     limit: Optional[int] = Query(None, description="Limit the number of trades returned")
 ):
-    """
-    Get all trades from the database.
-    
-    This endpoint retrieves the history of all completed trades from the database.
-    Can be filtered by strategy_name or ticker using query parameters.
-    
-    Example Usage: /trades?strategy_name=ma_crossover&ticker=AAPL
-    """
+    """Get all trades from the database"""
     try:
         # Get trades from database using the existing method
         trades = db_engine.get_trades(
@@ -76,17 +111,15 @@ async def get_all_trades(
         }
     
 def run_backtest_task(backtest_id: str, request_data: dict):
-    """
-    Background task function to run backtest
-    """
+    """Background task function to run backtest"""
     try:
         # Update status to RUNNING
         db_engine.update_backtest_status(backtest_id, "RUNNING")
         
-        # Generate strategy data first
-        strategy_data = ma_crossover_strategy(
-            short_window=request_data["strategy_params"].get("short_window", 20),
-            long_window=request_data["strategy_params"].get("long_window", 50),
+        # Generate strategy data using strategy selector
+        strategy_data = get_strategy_data(
+            strategy_name=request_data["strategy_name"],
+            strategy_params=request_data["strategy_params"],
             stock_symbol=request_data["stock_symbol"],
             start_date=request_data["start_date"],
             end_date=request_data["end_date"]
@@ -122,9 +155,7 @@ def run_backtest_task(backtest_id: str, request_data: dict):
 
 @app.post("/backtest")
 async def backtest(background_tasks: BackgroundTasks, request: BacktestRequest):
-    """
-    Start a new backtest job in the background
-    """
+    """Start a new backtest job in the background"""
     # Generate new backtest ID
     backtest_id = str(uuid.uuid4())
     
@@ -155,12 +186,7 @@ async def backtest(background_tasks: BackgroundTasks, request: BacktestRequest):
 
 @app.get("/backtest/{backtest_id}/status")
 async def get_backtest_status(backtest_id: str):
-    """
-    Get the current status of a backtest job (without full results)
-    
-    Use this endpoint to check if a backtest is still running.
-    For completed backtests, use GET /backtest/{backtest_id} to get full results.
-    """
+    """Get the current status of a backtest job"""
     try:
         job = db_engine.get_backtest_job(backtest_id)
         if not job:
@@ -187,14 +213,7 @@ async def get_backtest_status(backtest_id: str):
 
 @app.get("/backtest/{backtest_id}")
 async def get_backtest_results(backtest_id: str):
-    """
-    Get the full results of a completed backtest
-    
-    Retrieves comprehensive backtest data including:
-    - Performance metrics (final portfolio value, P&L, win rate, etc.)
-    - Equity curve data for plotting portfolio growth over time
-    - Complete chart data with OHLCV, indicators, and trading signals
-    """
+    """Get the full results of a completed backtest"""
     try:
         job = db_engine.get_backtest_job(backtest_id)
         if not job:
@@ -222,9 +241,9 @@ async def get_backtest_results(backtest_id: str):
         portfolio_values = stored_results.get("portfolio_values", [])
         
         # Regenerate strategy data to get chart data with indicators
-        strategy_data = ma_crossover_strategy(
-            short_window=request_params.get("strategy_params", {}).get("short_window", 20),
-            long_window=request_params.get("strategy_params", {}).get("long_window", 50),
+        strategy_data = get_strategy_data(
+            strategy_name=request_params.get("strategy_name", "ma_crossover"),
+            strategy_params=request_params.get("strategy_params", {}),
             stock_symbol=request_params.get("stock_symbol", "AAPL"),
             start_date=request_params.get("start_date", "2020-01-01"),
             end_date=request_params.get("end_date", "2024-12-31")
@@ -244,10 +263,10 @@ async def get_backtest_results(backtest_id: str):
         
         # Create chart data with OHLCV, indicators, and signals
         chart_data = []
-        short_window = request_params.get("strategy_params", {}).get("short_window", 20)
-        long_window = request_params.get("strategy_params", {}).get("long_window", 50)
+        strategy_name = request_params.get("strategy_name", "ma_crossover").lower()
         
         for index, row in strategy_data.iterrows():
+            # Base chart data (always included)
             chart_point = {
                 "Date": index.strftime("%Y-%m-%dT%H:%M:%S%z") if hasattr(index, 'strftime') else str(index),
                 "Open": round(float(row['Open']), 2),
@@ -255,10 +274,25 @@ async def get_backtest_results(backtest_id: str):
                 "Low": round(float(row['Low']), 2), 
                 "Close": round(float(row['Close']), 2),
                 "Volume": int(row['Volume']),
-                f"EMA{short_window}": round(float(row[f'EMA{short_window}']), 2) if f'EMA{short_window}' in row else None,
-                f"EMA{long_window}": round(float(row[f'EMA{long_window}']), 2) if f'EMA{long_window}' in row else None,
                 "Position": float(row.get('Position', 0))  # Signal for frontend markers
             }
+            
+            # Add strategy-specific indicators
+            if strategy_name == "ma_crossover":
+                # MA Crossover indicators
+                short_window = request_params.get("strategy_params", {}).get("short_window", 20)
+                long_window = request_params.get("strategy_params", {}).get("long_window", 50)
+                chart_point[f"EMA{short_window}"] = round(float(row[f'EMA{short_window}']), 2) if f'EMA{short_window}' in row else None
+                chart_point[f"EMA{long_window}"] = round(float(row[f'EMA{long_window}']), 2) if f'EMA{long_window}' in row else None
+                
+            elif strategy_name == "bollinger_bands":
+                # Bollinger Bands indicators
+                window = request_params.get("strategy_params", {}).get("window", 20)
+                chart_point[f"SMA_{window}"] = round(float(row[f'SMA_{window}']), 2) if f'SMA_{window}' in row else None
+                chart_point["Upper_Band"] = round(float(row['Upper_Band']), 2) if 'Upper_Band' in row else None
+                chart_point["Lower_Band"] = round(float(row['Lower_Band']), 2) if 'Lower_Band' in row else None
+                chart_point["Percent_B"] = round(float(row['Percent_B']), 4) if 'Percent_B' in row else None
+            
             chart_data.append(chart_point)
         
         # Build the comprehensive response
