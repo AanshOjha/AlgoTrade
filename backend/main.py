@@ -1,4 +1,5 @@
 from fastapi import FastAPI, BackgroundTasks, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 from strategy.ma_crossover import ma_crossover_strategy
@@ -15,6 +16,15 @@ app = FastAPI(
     title="Basic Algo Trading App",
     description="A basic trading application API",
     version="3.0.0"
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  # Vue.js dev server
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 def get_strategy_data(
