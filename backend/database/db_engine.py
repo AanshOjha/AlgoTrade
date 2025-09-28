@@ -48,10 +48,19 @@ class DatabaseEngine:
                     exit_timestamp TEXT,
                     pnl REAL DEFAULT 0.0,
                     days_held INTEGER DEFAULT 0,
+                    backtest_id TEXT,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            
+            # Add backtest_id column to existing trades table if it doesn't exist
+            try:
+                cursor.execute('ALTER TABLE trades ADD COLUMN backtest_id TEXT')
+                logger.info("Added backtest_id column to trades table")
+            except sqlite3.OperationalError:
+                # Column already exists, ignore error
+                pass
             
             # Create index for better query performance
             cursor.execute('''
@@ -62,6 +71,12 @@ class DatabaseEngine:
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_trades_timestamp 
                 ON trades(entry_timestamp)
+            ''')
+            
+            # Create index for backtest_id
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_trades_backtest_id 
+                ON trades(backtest_id)
             ''')
             
             # Create backtest_jobs table
@@ -99,6 +114,7 @@ class DatabaseEngine:
                     quantity: int,
                     entry_price: float,
                     entry_timestamp: str,
+                    backtest_id: Optional[str] = None,
                     exit_price: Optional[float] = None,
                     exit_timestamp: Optional[str] = None,
                     pnl: Optional[float] = None,
@@ -115,11 +131,11 @@ class DatabaseEngine:
                 INSERT INTO trades (
                     strategy_name, stock_symbol, trade_type, quantity,
                     entry_price, exit_price, entry_timestamp, exit_timestamp,
-                    pnl, days_held
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    pnl, days_held, backtest_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (strategy_name, stock_symbol, trade_type, quantity,
                   entry_price, exit_price, entry_timestamp, exit_timestamp,
-                  pnl or 0.0, days_held or 0))
+                  pnl or 0.0, days_held or 0, backtest_id))
             
             trade_id = cursor.lastrowid
             conn.commit()
@@ -169,6 +185,7 @@ class DatabaseEngine:
     def get_trades(self, 
                   stock_symbol: Optional[str] = None,
                   strategy_name: Optional[str] = None,
+                  backtest_id: Optional[str] = None,
                   limit: Optional[int] = None) -> List[Dict[Any, Any]]:
         """
         Retrieve trades with optional filtering
@@ -187,6 +204,10 @@ class DatabaseEngine:
             if strategy_name:
                 query += " AND strategy_name = ?"
                 params.append(strategy_name)
+            
+            if backtest_id:
+                query += " AND backtest_id = ?"
+                params.append(backtest_id)
             
             query += " ORDER BY entry_timestamp DESC"
             
@@ -306,6 +327,58 @@ class DatabaseEngine:
             
         except sqlite3.Error as e:
             logger.error(f"Error retrieving backtest jobs: {e}")
+            raise
+        finally:
+            conn.close()
+    
+    def delete_all_trades(self) -> int:
+        """
+        Delete all trades from the database
+        Returns the number of trades deleted
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Get count before deletion
+            cursor.execute('SELECT COUNT(*) FROM trades')
+            count = cursor.fetchone()[0]
+            
+            # Delete all trades
+            cursor.execute('DELETE FROM trades')
+            conn.commit()
+            
+            logger.info(f"Deleted {count} trades from database")
+            return count
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error deleting trades: {e}")
+            raise
+        finally:
+            conn.close()
+    
+    def delete_all_backtests(self) -> int:
+        """
+        Delete all backtest jobs from the database
+        Returns the number of backtest jobs deleted
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Get count before deletion
+            cursor.execute('SELECT COUNT(*) FROM backtest_jobs')
+            count = cursor.fetchone()[0]
+            
+            # Delete all backtest jobs
+            cursor.execute('DELETE FROM backtest_jobs')
+            conn.commit()
+            
+            logger.info(f"Deleted {count} backtest jobs from database")
+            return count
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error deleting backtest jobs: {e}")
             raise
         finally:
             conn.close()

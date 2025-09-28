@@ -1,5 +1,5 @@
 import pandas as pd
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Optional
 from datetime import datetime
 import sys
 import os
@@ -13,7 +13,8 @@ def backtest_strategy(data: pd.DataFrame,
                      strategy_name: str,
                      stock_symbol: str,
                      initial_capital: float = settings.INITIAL_CAPITAL, 
-                     shares_to_buy: int = settings.SHARES_TO_BUY) -> Tuple[List[float], Dict[str, Any]]:
+                     shares_to_buy: int = settings.SHARES_TO_BUY,
+                     backtest_id: Optional[str] = None) -> Tuple[List[float], Dict[str, Any]]:
     """
     Backtest trading strategy based on position signals
     
@@ -64,7 +65,8 @@ def backtest_strategy(data: pd.DataFrame,
                         trade_type="buy",
                         quantity=shares_to_buy,
                         entry_price=current_price,
-                        entry_timestamp=str(index)[:19]  # Format timestamp
+                        entry_timestamp=str(index)[:19],  # Format timestamp
+                        backtest_id=backtest_id
                     )
                     total_trades += 1
             # else: already holding shares, do nothing

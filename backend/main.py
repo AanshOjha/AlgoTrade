@@ -84,6 +84,7 @@ class BacktestRequest(BaseModel):
 async def get_all_trades(
     strategy_name: Optional[str] = Query(None, description="Filter trades by strategy name"),
     ticker: Optional[str] = Query(None, description="Filter trades by stock ticker/symbol"),
+    backtest_id: Optional[str] = Query(None, description="Filter trades by specific backtest ID"),
     limit: Optional[int] = Query(None, description="Limit the number of trades returned")
 ):
     """Get all trades from the database"""
@@ -92,6 +93,7 @@ async def get_all_trades(
         trades = db_engine.get_trades(
             stock_symbol=ticker,
             strategy_name=strategy_name,
+            backtest_id=backtest_id,
             limit=limit
         )
         
@@ -141,7 +143,8 @@ def run_backtest_task(backtest_id: str, request_data: dict):
             stock_symbol=request_data["stock_symbol"],
             initial_capital=request_data["initial_capital"],
             strategy_name=request_data["strategy_name"],
-            shares_to_buy=settings.SHARES_TO_BUY
+            shares_to_buy=settings.SHARES_TO_BUY,
+            backtest_id=backtest_id
         )
         
         # Store comprehensive results as JSON string
@@ -328,6 +331,44 @@ async def get_backtest_results(backtest_id: str):
         return {
             "status": "error",
             "message": f"Failed to retrieve backtest results: {str(e)}"
+        }
+
+@app.delete("/trades")
+async def delete_all_trades():
+    """Delete all trade data from the database"""
+    try:
+        # Delete all trades using the database engine
+        deleted_count = db_engine.delete_all_trades()
+        
+        return {
+            "status": "success",
+            "message": f"Successfully deleted {deleted_count} trades",
+            "deleted_count": deleted_count
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to delete trades: {str(e)}"
+        }
+
+@app.delete("/backtests")
+async def delete_all_backtests():
+    """Delete all backtest data from the database"""
+    try:
+        # Delete all backtest jobs using the database engine
+        deleted_count = db_engine.delete_all_backtests()
+        
+        return {
+            "status": "success",
+            "message": f"Successfully deleted {deleted_count} backtest jobs",
+            "deleted_count": deleted_count
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to delete backtest jobs: {str(e)}"
         }
 
 # Run the application
