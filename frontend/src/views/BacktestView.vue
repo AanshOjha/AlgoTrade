@@ -429,6 +429,7 @@ const currentBacktestId = ref(null)
 const results = ref(null)
 const statusMessage = ref('')
 const jobStatus = ref('PENDING')
+const tradeHistoryData = ref([])
 let statusCheckInterval = null
 
 // Chart related data
@@ -535,39 +536,15 @@ const isBBStrategy = computed(() => {
 })
 
 const tradeHistory = computed(() => {
-  if (!results.value?.chart_data) return []
-  
-  const trades = []
-  let currentTrade = null
-  
-  results.value.chart_data.forEach((point, index) => {
-    if (point.Position === 1 && !currentTrade) {
-      // Buy signal - start new trade
-      currentTrade = {
-        entryDate: point.Date,
-        entryPrice: point.Close,
-        exitDate: null,
-        exitPrice: null,
-        pnl: 0,
-        duration: 0
-      }
-    } else if (point.Position === -1 && currentTrade) {
-      // Sell signal - close trade
-      currentTrade.exitDate = point.Date
-      currentTrade.exitPrice = point.Close
-      currentTrade.pnl = currentTrade.exitPrice - currentTrade.entryPrice
-      
-      // Calculate duration
-      const entryDate = new Date(currentTrade.entryDate)
-      const exitDate = new Date(currentTrade.exitDate)
-      currentTrade.duration = Math.ceil((exitDate - entryDate) / (1000 * 60 * 60 * 24))
-      
-      trades.push({ ...currentTrade })
-      currentTrade = null
-    }
-  })
-  
-  return trades
+  // Return the fetched trade history data
+  return tradeHistoryData.value.map(trade => ({
+    entryDate: trade.entry_datetime,
+    entryPrice: trade.entry_price,
+    exitDate: trade.exit_datetime,
+    exitPrice: trade.exit_price,
+    pnl: trade.pnl,
+    duration: trade.trade_duration_days
+  }))
 })
 
 // Methods
@@ -666,6 +643,30 @@ const checkBacktestStatus = async () => {
   }
 }
 
+const fetchTradeHistory = async () => {
+  if (!currentBacktestId.value) return
+  
+  try {
+    const response = await fetch(`http://127.0.0.1:8000/trades?backtest_id=${currentBacktestId.value}`)
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const trades = await response.json()
+    console.log('Fetched trade history:', trades) // Debug log
+    
+    // Filter out incomplete trades (trades without exit data)
+    tradeHistoryData.value = trades.filter(trade => 
+      trade.exit_datetime && trade.exit_price && trade.pnl !== null
+    )
+    
+    console.log('Filtered trade history:', tradeHistoryData.value.length, 'completed trades')
+  } catch (error) {
+    console.error('Error fetching trade history:', error)
+    tradeHistoryData.value = [] // Reset to empty array on error
+  }
+}
+
 const fetchResults = async () => {
   if (!currentBacktestId.value) return
   
@@ -679,6 +680,9 @@ const fetchResults = async () => {
       results.value = data
       console.log('Chart data length:', data.chart_data?.length) // Debug log
       console.log('Equity curve length:', data.equity_curve?.length) // Debug log
+      
+      // Fetch trade history from API
+      await fetchTradeHistory()
       
       // Create charts after results are loaded
       await nextTick()
