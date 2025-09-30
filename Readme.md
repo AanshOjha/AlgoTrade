@@ -33,6 +33,56 @@ A comprehensive full-stack trading application featuring a **FastAPI backend** w
 - Historical data caching
 - CSV export capabilities
 
+## 📸 Screenshots
+
+### 🏠 Home Page
+<img src="Results/Screenshots/1-Home.jpeg" alt="Home Page" width="600">
+
+### 📊 Backtest Dashboard
+<img src="Results/Screenshots/2-Backtest-Dashboard.jpeg" alt="Backtest Dashboard" width="600">
+
+- **Strategy Configuration**: 
+  - Stock symbol selection
+  - Date range picker
+  - Strategy parameter adjustment
+  - Initial capital setting
+
+- **Real-time Monitoring**:
+  - Live status updates during backtest execution
+  - Progress indicators
+  - Error handling with user-friendly messages
+
+- **Performance Analysis**:
+  - Key metrics dashboard (P&L, win rate, total trades)
+  - Visual performance indicators with color coding
+  - Backtest details and configuration summary
+
+<img src="Results/Screenshots/3-Portfolio-Performance.png" alt="Portfolio Performance" width="600">
+
+### 📊 **Interactive Charts** (Chart.js Integration)
+- **Price Chart with Signals**:
+  - OHLC candlestick data visualization
+  - Strategy-specific indicators overlay
+  - Buy/sell signal markers
+  - Customizable time ranges
+
+<img src="Results/Screenshots/4-Price-Chart.png" alt="Price Chart with Signals" width="600">
+
+- **Portfolio Equity Curve**:
+  - Portfolio value progression over time
+  - Initial vs final capital comparison
+  - Performance percentage tracking
+
+<img src="Results/Screenshots/5-Equity-Curve.png" alt="Equity Curve" width="600">
+
+- **Trade History Analysis**:
+  - Individual trade details
+  - Profit/loss visualization
+  - Trade duration analysis
+  - Win/loss statistics
+
+<img src="Results/Screenshots/6-Trade-History.png" alt="Trade History Analysis" width="600">
+
 ## 🏗️ Architecture
 
 ```
@@ -295,40 +345,6 @@ Delete all backtest job records from database.
 - **Quick Navigation**: Direct access to backtesting interface
 - **Responsive Layout**: Mobile-friendly design
 
-### 📈 **Backtest Dashboard**
-- **Strategy Configuration**: 
-  - Stock symbol selection
-  - Date range picker
-  - Strategy parameter adjustment
-  - Initial capital setting
-
-- **Real-time Monitoring**:
-  - Live status updates during backtest execution
-  - Progress indicators
-  - Error handling with user-friendly messages
-
-- **Performance Analysis**:
-  - Key metrics dashboard (P&L, win rate, total trades)
-  - Visual performance indicators with color coding
-  - Backtest details and configuration summary
-
-### 📊 **Interactive Charts** (Chart.js Integration)
-- **Price Chart with Signals**:
-  - OHLC candlestick data visualization
-  - Strategy-specific indicators overlay
-  - Buy/sell signal markers
-  - Customizable time ranges
-
-- **Portfolio Equity Curve**:
-  - Portfolio value progression over time
-  - Initial vs final capital comparison
-  - Performance percentage tracking
-
-- **Trade History Analysis**:
-  - Individual trade details
-  - Profit/loss visualization
-  - Trade duration analysis
-  - Win/loss statistics
 
 ### 🎨 **UI/UX Features**
 - **Animated Backgrounds**: Floating geometric shapes
